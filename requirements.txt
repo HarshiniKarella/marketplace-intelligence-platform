@@ -1,2 +1,5 @@
 pandas
 pytest
+psycopg[binary]
+python-dotenv
+sqlalchemy
