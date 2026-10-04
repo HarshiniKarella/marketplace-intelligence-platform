@@ -1,3 +1,4 @@
+import csv
 import logging
 from pathlib import Path
 
@@ -35,6 +36,15 @@ def load_csv_with_copy(
         table_name,
     )
 
+    # Parse the CSV header correctly.
+    with file_path.open(
+        "r",
+        encoding="utf-8-sig",
+        newline="",
+    ) as csv_file:
+        reader = csv.reader(csv_file)
+        columns = next(reader)
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
 
@@ -44,45 +54,38 @@ def load_csv_with_copy(
                 )
             )
 
-            with file_path.open(
-                "r",
-                encoding="utf-8",
-                newline="",
-            ) as csv_file:
-
-                header = csv_file.readline().strip()
-
-                columns = [
-                    column.strip()
-                    for column in header.split(",")
-                ]
-
-                column_definitions = sql.SQL(", ").join(
-                    sql.SQL("{} TEXT").format(
-                        sql.Identifier(column)
-                    )
-                    for column in columns
+            column_definitions = sql.SQL(", ").join(
+                sql.SQL("{} TEXT").format(
+                    sql.Identifier(column)
                 )
+                for column in columns
+            )
 
-                cursor.execute(
-                    sql.SQL(
-                        "CREATE TABLE raw.{} ({})"
-                    ).format(
-                        sql.Identifier(table_name),
-                        column_definitions,
-                    )
-                )
-
-                copy_statement = sql.SQL(
-                    "COPY raw.{} ({}) "
-                    "FROM STDIN WITH (FORMAT CSV)"
+            cursor.execute(
+                sql.SQL(
+                    "CREATE TABLE raw.{} ({})"
                 ).format(
                     sql.Identifier(table_name),
-                    sql.SQL(", ").join(
-                        sql.Identifier(column)
-                        for column in columns
-                    ),
+                    column_definitions,
                 )
+            )
+
+            copy_statement = sql.SQL(
+                "COPY raw.{} ({}) "
+                "FROM STDIN WITH (FORMAT CSV, HEADER TRUE)"
+            ).format(
+                sql.Identifier(table_name),
+                sql.SQL(", ").join(
+                    sql.Identifier(column)
+                    for column in columns
+                ),
+            )
+
+            with file_path.open(
+                "r",
+                encoding="utf-8-sig",
+                newline="",
+            ) as csv_file:
 
                 with cursor.copy(copy_statement) as copy:
                     while data := csv_file.read(1024 * 1024):
